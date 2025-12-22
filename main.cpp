@@ -134,10 +134,11 @@ int main(void) {
     }
     printf("Started periodic measurement.\n");
 
+    sleep(10); // Wait before first read
+
     float co2_concentration = 0.0;
     float temperature = 0.0;
     float humidity = 0.0;
-    uint16_t data_ready = 0;
     bool running = true;
 
     while (running) {
