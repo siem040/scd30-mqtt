@@ -4,25 +4,33 @@
 #include <unistd.h>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <map>
+#include "env_loader.h"
 #include "pahomqtt/src/MQTTClient.h"
 
-#define CLIENTID    "SCD30_Publisher"
-#define BROKER_URI  "tcp://localhost:1883"
-#define TOPIC_TEMP  "siem/bedroom/temperature"
-#define TOPIC_HUM   "siem/bedroom/humidity"
-#define TOPIC_CO2   "siem/bedroom/co2"
-#define TIMEOUT     10000L
-#define USERNAME "your_username"
-#define PASSWORD "your_password"
+// Configuration Variables
+std::string BROKER_URI;
+std::string CLIENT_ID;
+std::string TOPIC_TEMP;
+std::string TOPIC_HUM;
+std::string TOPIC_CO2;
+std::string USERNAME;
+std::string PASSWORD;
+long TIMEOUT_MS = 10000L;
+int INTERVAL_SEC = 600;
 
+// Wrapper for sensirion sleep
 #define sensirion_hal_sleep_us sensirion_i2c_hal_sleep_usec
 
+// Optimization: Connect once, publish all 3, then disconnect
+// to avoid 3 separate connection handshakes per measurement
 int publish_measurements(float co2, float temp, float hum) {
     MQTTClient client;
     MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
     int rc;
 
-    if ((rc = MQTTClient_create(&client, BROKER_URI, CLIENTID,
+    if ((rc = MQTTClient_create(&client, BROKER_URI.c_str(), CLIENT_ID.c_str(),
         MQTTCLIENT_PERSISTENCE_NONE, NULL)) != MQTTCLIENT_SUCCESS)
     {
         printf("Failed to create client, return code %d\n", rc);
@@ -32,8 +40,11 @@ int publish_measurements(float co2, float temp, float hum) {
     conn_opts.keepAliveInterval = 10;
     conn_opts.cleansession = 1;
     conn_opts.connectTimeout = 5; // 5 seconds connection timeout
-    conn_opts.username = USERNAME;
-    conn_opts.password = PASSWORD;
+    
+    if (!USERNAME.empty()) {
+        conn_opts.username = USERNAME.c_str();
+        conn_opts.password = PASSWORD.c_str();
+    }
 
     if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS)
     {
@@ -43,7 +54,7 @@ int publish_measurements(float co2, float temp, float hum) {
     }
 
     // Define topics and values
-    const char* topics[] = {TOPIC_CO2, TOPIC_TEMP, TOPIC_HUM};
+    const char* topics[] = {TOPIC_CO2.c_str(), TOPIC_TEMP.c_str(), TOPIC_HUM.c_str()};
     float values[] = {co2, temp, hum};
 
     for(int i = 0; i < 3; ++i) {
@@ -61,7 +72,7 @@ int publish_measurements(float co2, float temp, float hum) {
         if (pub_rc != MQTTCLIENT_SUCCESS) {
             printf("Failed to publish to %s, return code %d\n", topics[i], pub_rc);
         } else {
-            MQTTClient_waitForCompletion(client, token, TIMEOUT);
+            MQTTClient_waitForCompletion(client, token, TIMEOUT_MS);
         }
     }
 
@@ -73,6 +84,29 @@ int publish_measurements(float co2, float temp, float hum) {
 }
 
 int main(void) {
+    // Load Configuration
+    auto env = load_env(".env");
+    if (env.empty()) {
+        printf("Warning: No .env file found or empty. Using defaults/failures may occur if keys are missing.\n");
+    }
+
+    // Use get_env_value to populate globals, providing defaults where appropriate
+    BROKER_URI = get_env_value(env, "BROKER_URI", "tcp://localhost:1883");
+    CLIENT_ID = get_env_value(env, "CLIENT_ID", "SCD30_Publisher");
+    TOPIC_TEMP = get_env_value(env, "TOPIC_TEMP", "siem/bedroom/temperature");
+    TOPIC_HUM = get_env_value(env, "TOPIC_HUM", "siem/bedroom/humidity");
+    TOPIC_CO2 = get_env_value(env, "TOPIC_CO2", "siem/bedroom/co2");
+    USERNAME = get_env_value(env, "USERNAME", "your_username");
+    PASSWORD = get_env_value(env, "PASSWORD", "your_password");
+    
+    std::string interval_str = get_env_value(env, "INTERVAL", "600");
+    INTERVAL_SEC = std::atoi(interval_str.c_str());
+    if (INTERVAL_SEC < 2) INTERVAL_SEC = 2; // Minimum for SCD30
+
+    printf("Starting SCD30 Publisher...\n");
+    printf("Broker: %s\n", BROKER_URI.c_str());
+    printf("Interval: %d seconds\n", INTERVAL_SEC);
+
     int16_t error = 0;
 
     sensirion_i2c_hal_init();
@@ -115,8 +149,11 @@ int main(void) {
             continue;
         }
         if (!data_ready) {
+            // Wait a bit before polling again
+            sleep(INTERVAL_SEC);
             continue;
         }
+
         error = scd30_read_measurement_data(&co2_concentration, &temperature, &humidity);
         if (error != 0) {
             printf("Error reading measurement data: %i\n", error);
@@ -127,8 +164,9 @@ int main(void) {
         printf("Read: CO2=%.2f, Temp=%.2f, Hum=%.2f\n", co2_concentration, temperature, humidity);
         // Publish all measurements in one connection session
         publish_measurements(co2_concentration, temperature, humidity);
-        // Sleep for 600 seconds (SCD30 default measurement interval is 2s)
-        sleep(600);
+        
+        // Sleep for configurable interval
+        sleep(INTERVAL_SEC);
     }
 
     // In unreachable code (infinite loop), but for completeness:

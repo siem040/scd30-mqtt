@@ -24,7 +24,7 @@ set(SCD30_SOURCES
 )
 
 # Create executable
-add_executable(scd30_mqtt main.cpp ${SCD30_SOURCES})
+add_executable(scd30_mqtt main.cpp env_loader.cpp ${SCD30_SOURCES})
 
 # Link Paho MQTT libraries (paho-mqtt3c is the synchronous C client)
 # Also link pthread as it is often required by Paho on Linux

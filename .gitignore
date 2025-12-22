@@ -41,6 +41,10 @@
 *.dwo
 .vs/
 
+# env
+.env
+*.env
+
 # ---- Build artifacts ----
 /build/
 /build-*/
