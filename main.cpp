@@ -141,20 +141,7 @@ int main(void) {
     bool running = true;
 
     while (running) {
-        // Poll for data ready statuc
-        error = scd30_get_data_ready(&data_ready);
-        if (error != 0) {
-            printf("Error reading data ready status: %i\n", error);
-            running = false;
-            continue;
-        }
-        if (!data_ready) {
-            // Wait a bit before polling again
-            sleep(INTERVAL_SEC);
-            continue;
-        }
-
-        error = scd30_read_measurement_data(&co2_concentration, &temperature, &humidity);
+        error = scd30_blocking_read_measurement_data(&co2_concentration, &temperature, &humidity);
         if (error != 0) {
             printf("Error reading measurement data: %i\n", error);
             running = false;

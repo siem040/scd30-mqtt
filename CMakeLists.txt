@@ -28,7 +28,7 @@ add_executable(scd30_mqtt main.cpp env_loader.cpp ${SCD30_SOURCES})
 
 # Link Paho MQTT libraries (paho-mqtt3c is the synchronous C client)
 # Also link pthread as it is often required by Paho on Linux
-target_link_libraries(scd30_mqtt PRIVATE paho-mqtt3c)
+target_link_libraries(scd30_mqtt PRIVATE paho-mqtt3c-static)
 
 # If on Linux (likely for Raspberry Pi), link i2c if needed, though header based access might not need explicit link if using dev files
 # but usually for raw i2c access via devices on linux no special lib needed beyond standard headers.
