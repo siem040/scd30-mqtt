@@ -6,3 +6,5 @@ application for a pi with a scd30 air quality sensor to send to mqtt topics
 - install dependencies: `sudo ./install.sh`
 - compile: `./compile.sh`
 - for a service: `sudo ./makeservice.sh build/scd30_mqtt`
+
+make a .env like the .env.example
