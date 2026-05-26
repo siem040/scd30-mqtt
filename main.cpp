@@ -37,9 +37,10 @@ int publish_measurements(float co2, float temp, float hum) {
         return rc;
     }
 
-    conn_opts.keepAliveInterval = 10;
+    conn_opts.keepAliveInterval = 30;
     conn_opts.cleansession = 1;
-    conn_opts.connectTimeout = 5; // 5 seconds connection timeout
+    conn_opts.connectTimeout = 10; // 10 seconds connection timeout
+    conn_opts.retryInterval = 5; // 5 seconds retry interval
     
     if (!USERNAME.empty()) {
         conn_opts.username = USERNAME.c_str();
@@ -72,7 +73,10 @@ int publish_measurements(float co2, float temp, float hum) {
         if (pub_rc != MQTTCLIENT_SUCCESS) {
             printf("Failed to publish to %s, return code %d\n", topics[i], pub_rc);
         } else {
-            MQTTClient_waitForCompletion(client, token, TIMEOUT_MS);
+            int wait_rc = MQTTClient_waitForCompletion(client, token, TIMEOUT_MS);
+            if (wait_rc != MQTTCLIENT_SUCCESS) {
+                printf("Failed waiting for completion on %s, return code %d\n", topics[i], wait_rc);
+            }
         }
     }
 
@@ -92,6 +96,7 @@ int main(void) {
 
     // Use get_env_value to populate globals, providing defaults where appropriate
     BROKER_URI = get_env_value(env, "BROKER_URI", "tcp://localhost:1883");
+    // should be unique per client, but default to something identifiable
     CLIENT_ID = get_env_value(env, "CLIENT_ID", "SCD30_Publisher");
     TOPIC_TEMP = get_env_value(env, "TOPIC_TEMP", "siem/bedroom/temperature");
     TOPIC_HUM = get_env_value(env, "TOPIC_HUM", "siem/bedroom/humidity");
@@ -151,8 +156,11 @@ int main(void) {
 
         printf("Read: CO2=%.2f, Temp=%.2f, Hum=%.2f\n", co2_concentration, temperature, humidity);
         // Publish all measurements in one connection session
-        publish_measurements(co2_concentration, temperature, humidity);
-        
+        int rc = publish_measurements(co2_concentration, temperature, humidity);
+        if (rc != 0) {
+            printf("Error publishing measurements: %i\n", rc);
+        }
+
         // Sleep for configurable interval
         sleep(INTERVAL_SEC);
     }
